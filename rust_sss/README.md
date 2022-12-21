@@ -2,7 +2,7 @@
 
 ## Run
 
-This will run the secret sharing scheme over the prime field GF($2^{31} - 1$) with 5 shares and a secret of 123456789.
+This will run the secret sharing scheme over the prime field $F_{2^{31} - 1}$. In this example there are 5 shares and a secret of 123456789.
 
 ```bash
 cargo run --release
