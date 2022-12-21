@@ -1,5 +1,5 @@
 use openssl::rand::rand_bytes;
-use std::ops::{Add, Div, Mul, Neg};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub};
 
 // 2^31 - 1 Mersenne prime
 const P: u32 = 2147483647;
@@ -53,6 +53,41 @@ impl Add for FieldElement {
     }
 }
 
+impl AddAssign for FieldElement {
+    fn add_assign(&mut self, other: Self) {
+        assert!(
+            self.prime == other.prime,
+            "Cannot add two numbers in different Fields"
+        );
+
+        let a = self.value as u64;
+        let b = other.value as u64;
+        let p = self.prime as u64;
+
+        self.value = ((a + b) % p) as u32;
+    }
+}
+
+impl Sub for FieldElement {
+    type Output = Self;
+
+    fn sub(self, other: Self) -> Self {
+        assert!(
+            self.prime == other.prime,
+            "Cannot subtract two numbers in different Fields"
+        );
+
+        let a = self.value as u64;
+        let b = other.value as u64;
+        let p = self.prime as u64;
+
+        Self {
+            value: ((a + p - b) % p) as u32,
+            prime: self.prime,
+        }
+    }
+}
+
 impl Neg for FieldElement {
     type Output = Self;
 
@@ -80,6 +115,20 @@ impl Mul for FieldElement {
             value: ((a * b) % p) as u32,
             prime: self.prime,
         };
+    }
+}
+
+impl MulAssign for FieldElement {
+    fn mul_assign(&mut self, other: Self) {
+        assert!(
+            self.prime == other.prime,
+            "Cannot multiply two numbers in different Fields"
+        );
+        let a = self.value as u64;
+        let b = other.value as u64;
+        let p = self.prime as u64;
+
+        self.value = ((a * b) % p) as u32;
     }
 }
 
@@ -124,6 +173,7 @@ fn gen_shares(n: usize, k: usize, secret: u32) -> Vec<SecretShare> {
     return shares;
 }
 
+/// Reconstruct the secret from shares using Lagrange interpolation, where `k` is the threshold.
 fn reconstruct_secret(k: usize, shares: Vec<SecretShare>) -> u32 {
     assert!(
         shares.len() >= k,
@@ -135,10 +185,10 @@ fn reconstruct_secret(k: usize, shares: Vec<SecretShare>) -> u32 {
         let mut delta = FieldElement::new(1, P);
         for k in 0..shares.len() {
             if k != j {
-                delta = delta * ((-shares[k].x) / (shares[j].x + (-shares[k].x)));
+                delta *= -shares[k].x / (shares[j].x - shares[k].x);
             }
         }
-        reconstructed_secret = reconstructed_secret + delta * shares[j].y;
+        reconstructed_secret += delta * shares[j].y;
     }
 
     return reconstructed_secret.value;
@@ -159,12 +209,15 @@ fn rand_u32() -> u32 {
 }
 
 /// Evaluate a polynomial at x using Horner's method in the form of akx^k + ... + a2x^2 + a1x + a0
-fn poly_eval<T: Add<Output = T> + Mul<Output = T> + Copy>(coefficients: &Vec<T>, x: T) -> T {
+fn poly_eval<T: Add<Output = T> + Mul<Output = T> + AddAssign + MulAssign + Copy>(
+    coefficients: &Vec<T>,
+    x: T,
+) -> T {
     let mut y: T = coefficients[coefficients.len() - 1];
     let mut x_acc: T = x;
     for i in 1..coefficients.len() {
-        y = y + coefficients[coefficients.len() - 1 - i] * x_acc;
-        x_acc = x_acc * x;
+        y += coefficients[coefficients.len() - 1 - i] * x_acc;
+        x_acc *= x;
     }
 
     return y;
@@ -183,11 +236,11 @@ fn main() {
             "Share {}: ({}, {})",
             i + 1,
             shares[i].x.value,
-            shares[i].y.value
+            shares[i].y.value,
         );
     }
 
     // Reconstruct secret
-    let rec_secret = reconstruct_secret(NUM_THRESHOLD, shares[0..3].to_vec());
+    let rec_secret = reconstruct_secret(NUM_THRESHOLD, shares[1..4].to_vec());
     println!("Reconstructed Secret: {:?}", rec_secret);
 }
